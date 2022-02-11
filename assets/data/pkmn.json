@@ -1,0 +1,48 @@
+{
+"fs117galariancorsola": {
+    "name": "Galarian Corsola",
+    "img_id": "fs117galariancorsola",
+    "max_hp": 70,
+    "element": "psychic",
+    "moves": [
+        {
+            "name": "Tackle",
+            "energy": {"colorless": 2},
+            "damage": 30
+        }
+    ],
+    "retreat_cost": 1,
+    "weakness": {
+        "element": "dark",
+        "lambda": "damage = damage * 2"
+    },
+    "resistance": {
+        "element": "fighting",
+        "lambda": "damage = damage - 30"
+    }
+},
+"fs196sliggoo": {
+    "name": "Sliggoo",
+    "img_id": "fs196sliggoo",
+    "max_hp": 80,
+    "element": "dragon",
+    "moves": [
+        {
+            "name": "Melt",
+            "energy": {"colorless": 1},
+            "damage": 20
+        },
+        {
+            "name": "Body Slam",
+            "energy": {"water": 1, "psychic": 1},
+            "damage": 50,
+            "effect": [
+                "if chance(50)",
+                "target.inflict(PARALYSIS)"
+            ]
+        }
+    ],
+    "retreat_cost": 3,
+    "pre_evo": "Goomy"
+}
+}
