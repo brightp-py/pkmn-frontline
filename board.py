@@ -15,6 +15,7 @@ class Player:
         self.prize_cards = self.draw(round(len(deck)/10))
         self.hand = []
         self.discard_pile = []
+        self.front_line = [None, None, None, None]
     
     def shuffle(self):
         """Shuffle the player's deck."""
