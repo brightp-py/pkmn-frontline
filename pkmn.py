@@ -1,12 +1,73 @@
 import os
 from collections import defaultdict
+from functools import lru_cache
 
 import pygame
+
+@lru_cache(128)
+def fit_within(outer, inner):
+    """Fit the inner rect within the outer, maintaining width/height ratios.
+
+    Parameters:
+        outer - (x, y, w, h) representing outer rectangle.
+        inner - (w, h) representing inner rectangle's dimensions.
+    
+    Returns:
+        (x, y, w, h) representing inner rectangle's new position and area.
+    """
+    x1, y1, w1, h1 = outer
+    w2, h2 = inner
+    if w1 / h1 > w2 / h2:   # white space on left/right edges
+        h = h1
+        w = (w2 * h1) // h2
+        y = y1
+        x = x1 + (w1 - w) // 2
+    else:                   # white space on top/bottom edges
+        w = w1
+        h = (h2 * w1) // w2
+        x = x1
+        y = y1 + (h1 - h) // 2
+    return x, y, w, h
+
 
 class Card:
 
     def __init__(self, image):
         self._image = image
+        self._w, self._h = image.get_size()
+
+    @staticmethod
+    def cardback():
+        """Create a Card object of the cardback image.
+        
+        Generally, you should create one of these and re-use it for all
+        card backs.
+        """
+        image = pygame.image.load("assets/card/cardback.png")
+        return Card(image)
+    
+    def render(self, screen, rect, centered=False):
+        """Draw this card's image on the given pygame Surface.
+        
+        Parameters:
+
+            screen   - pygame.Surface to draw on.
+
+            rect     - (x, y, w, h) the image will fit within.
+
+            centered - If True, x and y represent the center of the image,
+                     | instead of the top-left corner.
+        """
+        if centered:
+            rect = (rect[0]-rect[2]//2, rect[1]-rect[3]//2, rect[2], rect[3])
+        x, y, w, h = fit_within(rect, (self._w, self._h))
+        if w != self._w and h != self._h:
+            try:
+                self._image = pygame.transform.smoothscale(self._image, (w, h))
+            except ValueError:
+                self._image = pygame.transform.scale(self._image, (w, h))
+            self._w, self._h = w, h
+        screen.blit(self._image, (x, y))
 
 
 class Unit(Card):
@@ -121,12 +182,12 @@ class Pokemon:
         Returns:
             Pygame Surface object.
         """
-        if os.path.exists(f"assets/file/{img_id}.png"):
-            filepath = f"assets/file/{img_id}.png"
-        elif os.path.exists(f"assets/file/{img_id}.jpg"):
-            filepath = f"assets/file/{img_id}.jpg"
+        if os.path.exists(f"assets/card/{img_id}.png"):
+            filepath = f"assets/card/{img_id}.png"
+        elif os.path.exists(f"assets/card/{img_id}.jpg"):
+            filepath = f"assets/card/{img_id}.jpg"
         else:
-            filepath = "assets/file/cardback.jpg"
+            filepath = "assets/card/cardback.jpg"
 
         return pygame.image.load(filepath)
 
