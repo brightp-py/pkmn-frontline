@@ -11,46 +11,31 @@ with open("assets/data/pkmn.json", 'r', encoding='utf-8') as f:
 def main():
     clock = pygame.time.Clock()
 
-    background = pygame.image.load('assets/img/roman_battlefield.jpg')
-    background = pygame.transform.rotate(background, 90)
-    bg_w, bg_h = background.get_size()
-    bg_x, bg_y = 800-(bg_w // 2), 500-(bg_h // 2)
-
     itf = board.Board((1600, 1000))
     p = pkmn.Pokemon.from_dict(PKMN['fs196sliggoo'])
-    card = p.build_unit()
-    cardback = pkmn.Card.cardback()
-
-    D = 89
-    H = 240
+    player = board.Player([p.build_unit() for _ in range(39)])
+    player.front_line[0] = p.build_unit()
+    player.front_line[1] = p.build_unit()
+    player.front_line[2] = p.build_unit()
+    player.front_line[3] = p.build_unit()
+    player.set_dimensions((1600, 1000))
 
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 sys.exit()
-        # itf.screen.blit(background, (bg_x, bg_y))
+            if event.type == pygame.VIDEORESIZE:
+                itf.screen = pygame.display.set_mode(
+                    (event.w, event.h),
+                    pygame.RESIZABLE
+                )
+                try:
+                    player.set_dimensions((event.w, event.h))
+                except Exception as e:
+                    print(e)
+        
         itf.screen.fill((234, 242, 239))
-        card.render(itf.screen, (800-5*D, 640, H, H), True)
-        card.render(itf.screen, (800-3*D, 640, H, H), True)
-        card.render(itf.screen, (800-D, 640, H, H), True)
-        card.render(itf.screen, (800+D, 640, H, H), True)
-        card.render(itf.screen, (800+3*D, 640, H, H), True)
-        card.render(itf.screen, (800+5*D, 640, H, H), True)
-
-        card.render(itf.screen, (800-5*D, 360, H, H), True)
-        card.render(itf.screen, (800-3*D, 360, H, H), True)
-        card.render(itf.screen, (800-D, 360, H, H), True)
-        card.render(itf.screen, (800+D, 360, H, H), True)
-        card.render(itf.screen, (800+3*D, 360, H, H), True)
-        card.render(itf.screen, (800+5*D, 360, H, H), True)
-
-        cardback.render(itf.screen, (1460, 620, H, H), True)
-        cardback.render(itf.screen, (1460, 870, H, H), True)
-
-        cardback.render(itf.screen, (140, 670, H, H), True)
-        cardback.render(itf.screen, (140, 730, H, H), True)
-        cardback.render(itf.screen, (140, 790, H, H), True)
-        cardback.render(itf.screen, (140, 850, H, H), True)
+        player.render(itf.screen, (0, 0))
         pygame.display.flip()
         clock.tick(30)
 

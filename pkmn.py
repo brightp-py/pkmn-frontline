@@ -33,8 +33,10 @@ def fit_within(outer, inner):
 class Card:
 
     def __init__(self, image):
+        self._orig_image = image
         self._image = image
         self._w, self._h = image.get_size()
+        self._x, self._y = 0, 0
 
     @staticmethod
     def cardback():
@@ -45,6 +47,26 @@ class Card:
         """
         image = pygame.image.load("assets/card/cardback.png")
         return Card(image)
+    
+    def set_rect(self, x=None, y=None, w=None, h=None):
+        """Set position and dimensions of this card.
+
+        Each parameter is optional.
+
+        Paramters:
+            x - Horizontal position.
+            y - Vertical position.
+            w - Horizontal width.
+            h - Vertical height.
+        """
+        if x is not None:
+            self._x = x
+        if y is not None:
+            self._y = y
+        if w is not None:
+            self._w = w
+        if h is not None:
+            self._h = h
     
     def render(self, screen, rect, centered=False):
         """Draw this card's image on the given pygame Surface.
@@ -61,11 +83,13 @@ class Card:
         if centered:
             rect = (rect[0]-rect[2]//2, rect[1]-rect[3]//2, rect[2], rect[3])
         x, y, w, h = fit_within(rect, (self._w, self._h))
+        self._x, self._y = x, y
         if w != self._w and h != self._h:
             try:
-                self._image = pygame.transform.smoothscale(self._image, (w, h))
+                self._image = pygame.transform.smoothscale(self._orig_image,
+                                                          (w, h))
             except ValueError:
-                self._image = pygame.transform.scale(self._image, (w, h))
+                self._image = pygame.transform.scale(self._orig_image, (w, h))
             self._w, self._h = w, h
         screen.blit(self._image, (x, y))
 
@@ -240,3 +264,6 @@ class Move:
             if energy[e] < self._energy[e]:
                 return False
         return True
+
+
+CARDBACK = Card.cardback()
