@@ -1,9 +1,11 @@
+import sys
 import random
 
 import pygame
-from pyrsistent import discard
 
 import pkmn
+
+BACKGROUND = (234, 242, 239)
 
 class Player:
 
@@ -21,7 +23,28 @@ class Player:
         self.front_line = [None, None, None, None]
 
         self._deck_rect = (0, 0, 0, 0)
+    
+    def _get_hand_coords(self):
+        """Generate coordinates for drawing cards in hand.
 
+        Returns:
+            hand_width - Width of the entire hand (including white space).
+            hand_start - x-position of left-most card.
+            hand_gap   - Horizontal distance between card starts.
+            hand_y     - y-position of all cards.
+        """
+        if len(self.hand) > 4:
+            hand_width = 4 * self._card_w + 3 * self._kern_w
+            hand_start = self._center[0] - (hand_width // 2)
+            hand_gap = (hand_width - self._card_w) / (len(self.hand) - 1)
+        else:
+            hand_width = len(self.hand) * self._card_w
+            hand_start = self._center[0] - (hand_width // 2)
+            hand_gap = self._card_w
+
+        hand_y = self._center[1] + int(1.5 * self._card_h)
+
+        return hand_start, hand_gap, hand_y
     
     def shuffle(self):
         """Shuffle the player's deck."""
@@ -57,14 +80,12 @@ class Player:
 
         self._center = (size[0] // 2, size[1] // 2)
     
-    def render(self, screen, mouse_pos):
+    def render(self, screen):
         """Render this player's field onto the screen.
 
         Parameters:
 
             screen    - pygame.Surface to draw onto.
-
-            mouse_pos - (x, y) of mouse position, for interactive elements.
         """
         deck_x = self._center[0] + 2 * self._card_w + int(2.5 * self._kern_w)
         deck_y = self._center[1] + self._kern_h // 2
@@ -74,7 +95,7 @@ class Player:
         fl_y = self._center[1] + self._kern_h
 
         pc_x = self._center[0] - 3 * self._card_w - int(2.5 * self._kern_w)
-        pc_y = deck_y
+        pc_y = deck_y + self._kern_h
 
         pkmn.CARDBACK.render(screen,
             (deck_x, deck_y, self._card_w, self._card_h))
@@ -91,10 +112,93 @@ class Player:
             pkmn.CARDBACK.render(screen, 
                                  (pc_x, pc_y, self._card_w, self._card_h))
             pc_y += 3 * self._kern_h
+    
+    def get_opposing_snapshot(self, size):
+        """Create a pygame.Surface image of this player as the opponent."""
+        surface = pygame.Surface(size)
+        surface.fill(BACKGROUND)
+        self.render(surface)
+
+        hand_start, hand_gap, hand_y = self._get_hand_coords()
+
+        for _ in self.hand:
+            pkmn.CARDBACK.render(surface,
+                                 (hand_start, hand_y,
+                                  self._card_w, self._card_h))
+            hand_start += hand_gap
+        
+        return pygame.transform.rotate(surface, 180)
+    
+    def choose_action(self, screen, check_event, opponent):
+        opposing_ss = opponent.get_opposing_snapshot(screen.get_size())
+        while True:
+            mouse_pos = pygame.mouse.get_pos()
+            for event in pygame.event.get():
+                if check_event(event) == pygame.VIDEORESIZE:
+                    opposing_ss = opponent.get_opposing_snapshot(
+                        screen.get_size())
+
+            screen.blit(opposing_ss, (0, 0))
+            self.render(screen)
+            self.render_hand(screen, mouse_pos)
+            pygame.display.flip()
+            pygame.time.Clock().tick(30)
+    
+    def render_hand(self, screen, mouse_pos):
+        hand_start, hand_gap, hand_y = self._get_hand_coords()
+
+        if mouse_pos[0] >= hand_start and \
+           mouse_pos[0] <= screen.get_width() - hand_start and \
+           mouse_pos[1] > hand_y:
+            selected = int((mouse_pos[0] - hand_start) // hand_gap)
+            if selected < 0:
+                selected = 0
+            elif selected >= len(self.hand):
+                selected = len(self.hand) - 1
+            
+            hand_x = hand_start
+            for i, card in enumerate(self.hand):
+                if i != selected:
+                    card.render(screen,
+                                (hand_x, hand_y, self._card_w, self._card_h))
+                hand_x += hand_gap
+            
+            self.hand[selected].render(screen,
+                (
+                    hand_start + hand_gap * selected,
+                    hand_y - (self._card_h // 3),
+                    self._card_w, self._card_h
+                ))
+
+        else:
+            hand_x = hand_start
+            for card in self.hand:
+                card.render(screen,
+                            (hand_x, hand_y, self._card_w, self._card_h))
+                hand_x += hand_gap
 
 
 class Board:
 
-    def __init__(self, size):
+    def __init__(self, size, player1, player2):
         self._w, self._h = size
-        self.screen = pygame.display.set_mode(size, pygame.RESIZABLE)
+        self._screen = pygame.display.set_mode(size, pygame.RESIZABLE)
+        self._p1 = player1
+        self._p2 = player2
+    
+    def _check_event(self, event):
+        if event.type == pygame.QUIT:
+            sys.exit()
+        elif event.type == pygame.VIDEORESIZE:
+            self._screen = pygame.display.set_mode((event.w, event.h),
+                                                   pygame.RESIZABLE)
+            self._p1.set_dimensions((event.w, event.h))
+            self._p2.set_dimensions((event.w, event.h))
+            return pygame.VIDEORESIZE
+    
+    def run_game(self):
+        while True:
+            for event in pygame.event.get():
+                self._check_event(event)
+            self._p1.choose_action(self._screen, self._check_event, self._p2)
+            self._p2.choose_action(self._screen, self._check_event, self._p1)
