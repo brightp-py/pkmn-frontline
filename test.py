@@ -12,14 +12,19 @@ def main():
     clock = pygame.time.Clock()
 
     p = pkmn.Pokemon.from_dict(PKMN['fs196sliggoo'])
-    player = board.Player([p.build_unit() for _ in range(39)])
+    p2 = pkmn.Pokemon.from_dict(PKMN['fs117galariancorsola'])
+    p3 = pkmn.Pokemon.from_dict(PKMN['fs195goomy'])
+    deck = [p.build_unit() for _ in range(20)] + \
+           [p3.build_unit() for _ in range(20)]
+    player = board.Player(deck)
+    player.shuffle()
+
     itf = board.Board((1000, 800), player, player)
 
     player.hand.extend(player.draw(4))
     
-    player.front_line[0] = p.build_unit()
-    player.front_line[1] = p.build_unit()
-    player.front_line[2] = p.build_unit()
+    player.front_line[0] = p3.build_unit()
+    # player.front_line[1] = p.build_unit()
     player.front_line[3] = p.build_unit()
     player.set_dimensions((1000, 800))
 

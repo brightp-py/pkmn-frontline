@@ -93,6 +93,30 @@ class Card:
             self._w, self._h = w, h
         screen.blit(self._image, (x, y))
 
+    def contains_point(self, pos):
+        """Return True if the given pos lies on this card.
+        
+        Parameters:
+            pos - (x, y) of position.
+        
+        Ignores rounded corners of Pokemon cards and simply counts the hitbox
+        as a rectangle.
+        """
+        x, y = pos
+        return x >= self._x and x <= self._x + self._w and \
+               y >= self._y and x <= self._y + self._h
+
+
+class Energy(Card):
+
+    def __init__(self, name, image):
+        super().__init__(image)
+        self._name = name
+    
+    def name(self):
+        """Get name attribute"""
+        return self._name
+
 
 class Unit(Card):
 
@@ -109,8 +133,58 @@ class Unit(Card):
         self._abilities = abilities
         self._pre_evo = pre_evo
 
+        self._placement = "evolved" if self._pre_evo else "basic"
+        self._attached = []
+
         self._energies = defaultdict(lambda: 0)
         self._affliction = None
+    
+    def name(self):
+        """Get name attribute."""
+        return self._name
+    
+    def placement(self):
+        """Get placement attribute."""
+        return self._placement
+    
+    def attach(self, card):
+        """Attach another card to this one.
+
+        Parameters:
+            card - Card that gets attached OR list of cards.
+        
+        Attached cards get discarded with this card.
+        """
+        if isinstance(card, Card):
+            self._attached.append(card)
+        elif isinstance(card, list):
+            self._attached.extend(card)
+    
+    def add_energy(self, energy):
+        """Attach some number of energies to this Pokemon.
+        
+        Parameters:
+            energy - Card that gets attached OR dict of energies.
+        """
+        if isinstance(energy, Energy):
+            self._energies[energy.name()] += 1
+        elif isinstance(energy, dict):
+            for name in energy:
+                self._energies[name] += energy[name]
+    
+    def evolves_from(self, other):
+        """Return True if this Pokemon evolves from `other`."""
+        return self._pre_evo == other.name()
+    
+    def evolve_into(self, card):
+        """Evolve this basic or Stage 1 PKMN into the next stage.
+        
+        Parameters:
+            card - Unit to pass energies onto.
+        """
+        card.attach(self._attached)
+        card.attach(self)
+        card.add_energy(self._energies)
     
     def take_damage(self, amount):
         """Subtract some amount of damage from this unit's hit points.

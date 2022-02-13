@@ -39,10 +39,30 @@
             "effect": [
                 "if chance(50)",
                 "target.inflict(PARALYSIS)"
-            ]
+            ],
+            "text": "Flip a coin. If heads, your opponent's Active Pokemon is now Paralyzed."
         }
     ],
     "retreat_cost": 3,
     "pre_evo": "Goomy"
+},
+"fs195goomy": {
+    "name": "Goomy",
+    "img_id": "fs195goomy",
+    "max_hp": 50,
+    "element": "dragon",
+    "moves": [
+        {
+            "name": "Tackle",
+            "energy": {"colorless": 1},
+            "damage": 10
+        },
+        {
+            "name": "Melt",
+            "energy": {"water": 1, "pyschic": 1},
+            "damage": 20
+        }
+    ],
+    "retreat_cost": 1
 }
 }
