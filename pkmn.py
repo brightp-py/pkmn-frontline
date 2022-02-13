@@ -1,8 +1,13 @@
 import os
+import json
 from collections import defaultdict
 from functools import lru_cache
 
 import pygame
+
+with open("assets/energy/tiles.json", 'r', encoding='utf-8') as f:
+    ENERGY_TILE_DATA = json.read(f)
+ENERGY_TILES = pygame.image.load("assets/energy/tiles.png")
 
 @lru_cache(128)
 def fit_within(outer, inner):
@@ -28,6 +33,15 @@ def fit_within(outer, inner):
         x = x1
         y = y1 + (h1 - h) // 2
     return x, y, w, h
+
+
+@lru_cache(32)
+def energy_orb(name):
+    length = ENERGY_TILE_DATA['sidelength']
+    surface = pygame.Surface((length, length), pygame.SRCALPHA, 32)
+    offset = ENERGY_TILE_DATA[name]
+    surface.blit(ENERGY_TILES, (-offset[0], -offset[1]))
+    return surface
 
 
 class Card:
@@ -109,13 +123,18 @@ class Card:
 
 class Energy(Card):
 
-    def __init__(self, name, image):
-        super().__init__(image)
+    def __init__(self, name):
+        super().__init__(pygame.image.load(f"assets/energy/{name}.png"))
         self._name = name
+        self._placement = "energy"
     
     def name(self):
-        """Get name attribute"""
+        """Get name attribute."""
         return self._name
+    
+    def placement(self):
+        """Get placement attribute."""
+        return self._placement
 
 
 class Unit(Card):

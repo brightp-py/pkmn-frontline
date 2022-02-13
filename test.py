@@ -14,8 +14,10 @@ def main():
     p = pkmn.Pokemon.from_dict(PKMN['fs196sliggoo'])
     p2 = pkmn.Pokemon.from_dict(PKMN['fs117galariancorsola'])
     p3 = pkmn.Pokemon.from_dict(PKMN['fs195goomy'])
-    deck = [p.build_unit() for _ in range(20)] + \
-           [p3.build_unit() for _ in range(20)]
+    deck = [p.build_unit() for _ in range(15)] + \
+           [p3.build_unit() for _ in range(15)] + \
+           [pkmn.Energy("psychic") for _ in range(5)] + \
+           [pkmn.Energy("water") for _ in range(5)]
     player = board.Player(deck)
     player.shuffle()
 

@@ -1,0 +1,14 @@
+{
+    "sidelength": 272,
+    "electric": [70, 57],
+    "colorless": [380, 57],
+    "fire": [696, 57],
+    "water": [1012, 57],
+    "grass": [1333, 57],
+    "fighting": [70, 396],
+    "dark": [380, 396],
+    "steel": [696, 396],
+    "dragon": [1012, 396],
+    "psychic": [1333, 396],
+    "fairy": [696, 745]
+}
