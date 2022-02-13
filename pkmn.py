@@ -6,7 +6,7 @@ from functools import lru_cache
 import pygame
 
 with open("assets/energy/tiles.json", 'r', encoding='utf-8') as f:
-    ENERGY_TILE_DATA = json.read(f)
+    ENERGY_TILE_DATA = json.load(f)
 ENERGY_TILES = pygame.image.load("assets/energy/tiles.png")
 
 @lru_cache(128)
@@ -36,11 +36,12 @@ def fit_within(outer, inner):
 
 
 @lru_cache(32)
-def energy_orb(name):
+def energy_orb(name, new_length):
     length = ENERGY_TILE_DATA['sidelength']
     surface = pygame.Surface((length, length), pygame.SRCALPHA, 32)
     offset = ENERGY_TILE_DATA[name]
     surface.blit(ENERGY_TILES, (-offset[0], -offset[1]))
+    surface = pygame.transform.smoothscale(surface, (new_length, new_length))
     return surface
 
 
@@ -118,7 +119,7 @@ class Card:
         """
         x, y = pos
         return x >= self._x and x <= self._x + self._w and \
-               y >= self._y and x <= self._y + self._h
+               y >= self._y and y <= self._y + self._h
 
 
 class Energy(Card):
@@ -190,6 +191,32 @@ class Unit(Card):
         elif isinstance(energy, dict):
             for name in energy:
                 self._energies[name] += energy[name]
+    
+    def render_with_energy(self, screen, rect):
+        """Draw this card on the screen with energy orbs.
+
+        Parameters:
+
+            screen - Pygame Surface to draw onto.
+
+            rect   - (x, y, w, h)
+        """
+        self.render(screen, rect)
+        x, y, w, h = fit_within(rect, (self._w, self._h))
+        orb_len = w // 5
+        y += h
+        a = 0
+
+        for e in self._energies:
+            img = energy_orb(e, orb_len)
+            for _ in range(self._energies[e]):
+                screen.blit(img, (x, y))
+                x += orb_len
+                a += 1
+                if a > 4:
+                    a = 0
+                    x -= 5 * orb_len
+                    y += orb_len
     
     def evolves_from(self, other):
         """Return True if this Pokemon evolves from `other`."""

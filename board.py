@@ -22,7 +22,7 @@ class Player:
         self.discard_pile = []
         self.front_line = [None, None, None, None]
 
-        self._deck_rect = (0, 0, 0, 0)
+        self._deck_card = pkmn.Card.cardback()
     
     def _get_hand_coords(self):
         """Generate coordinates for drawing cards in hand.
@@ -149,10 +149,11 @@ class Player:
                         return False
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     selected = self._selected_from_front_line(mouse_pos)
-                    if selected is not None:
+                    if selected is not None and selected in valid:
                         self._card_to_front_line(card, selected)
                         return True
 
+                screen.fill(BACKGROUND)
                 screen.blit(opposing_ss, (0, 0))
                 self.render(screen)
                 card.render(screen,
@@ -183,8 +184,12 @@ class Player:
                         if self._place_card(screen, check_event, opponent,
                                             card):
                             del self.hand[selected]
+                    elif self._deck_card.contains_point(mouse_pos):
+                        card = self.draw(1)
+                        self.hand.extend(card)
 
             mouse_pos = pygame.mouse.get_pos()
+            screen.fill(BACKGROUND)
             screen.blit(opposing_ss, (0, 0))
             self.render(screen)
             self.render_hand(screen, mouse_pos)
@@ -243,14 +248,14 @@ class Player:
         pc_x = self._center[0] - 3 * self._card_w - int(2.5 * self._kern_w)
         pc_y = deck_y + self._kern_h
 
-        pkmn.CARDBACK.render(screen,
+        self._deck_card.render(screen,
             (deck_x, deck_y, self._card_w, self._card_h))
         pkmn.CARDBACK.render(screen,
             (deck_x, discard_y, self._card_w, self._card_h))
         
         for card in self.front_line:
             if card:
-                card.render(screen,
+                card.render_with_energy(screen,
                     (fl_x, fl_y, self._card_w, self._card_h))
             fl_x += self._card_w + self._kern_w
         
