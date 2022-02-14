@@ -205,6 +205,14 @@ class Player:
             current -= 1
             current = current % len(options)
             textbox.set_text(options[current])
+        
+        def ok_click():
+            nonlocal current
+            if current == 0:    # MOVE
+                valid = [i for i in range(len(self._front_line))
+                            if self._front_line[i] is None]
+                if valid:
+
 
         button_img = pygame.image.load("assets/img/arrow.png")
         r_button = Button(button_img, r_click)
@@ -247,6 +255,9 @@ class Player:
                     mouse_pos = pygame.mouse.get_pos()
                     l_button.check_pressed(mouse_pos)
                     r_button.check_pressed(mouse_pos)
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN:
+                        ok_click()
             
             screen.fill(BACKGROUND)
             screen.blit(opposing_ss, (0, 0))
