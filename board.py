@@ -2,8 +2,10 @@ import sys
 import random
 
 import pygame
+pygame.init()
 
 import pkmn
+from ui import TextBox, Button
 
 BACKGROUND = (234, 242, 239)
 
@@ -23,6 +25,17 @@ class Player:
         self.front_line = [None, None, None, None]
 
         self._deck_card = pkmn.Card.cardback()
+    
+    def _focus_on(self, screen, card):
+        """Display the given Card as big as possible on the top half."""
+        card.render(screen,
+                    (
+                        self._center[0],
+                        self._center[1] // 2,
+                        self._center[1],
+                        self._center[1]
+                    ),
+                    centered=True)
     
     def _get_hand_coords(self):
         """Generate coordinates for drawing cards in hand.
@@ -156,16 +169,99 @@ class Player:
                 screen.fill(BACKGROUND)
                 screen.blit(opposing_ss, (0, 0))
                 self.render(screen)
-                card.render(screen,
-                            (
-                                self._center[0],
-                                self._center[1] // 2,
-                                self._center[1],
-                                self._center[1]
-                            ),
-                            centered=True)
+                self._focus_on(screen, card)
                 pygame.display.flip()
                 pygame.time.Clock().tick(30)
+    
+    def _pkmn_action(self, screen, check_event, opponent, fl_space):
+        """Choose between attack, move, or retreat for the selected Pokemon.
+
+        Parameters:
+            fl_space - int of front line slot chose, between 0 and len(fl)-1.
+        
+        Returns True if successfully executed, False otherwise.
+        """
+        opposing_ss = opponent.get_opposing_snapshot(screen.get_size())
+        options = [
+            "Move\n\nMove this Pokemon to an open space.\n\nThis action cannot"
+            " be taken two turns in a row.",
+            "Retreat\n\nMove this Pokemon to an open space or switch it with "
+            "another active Pokemon."
+        ]
+
+        current = 0
+        textbox = TextBox(options[0])
+        card = self.front_line[fl_space]
+        options.extend(card.move_texts())
+
+        def r_click():
+            nonlocal current
+            current += 1
+            current = current % len(options)
+            textbox.set_text(options[current])
+        
+        def l_click():
+            nonlocal current
+            current -= 1
+            current = current % len(options)
+            textbox.set_text(options[current])
+
+        button_img = pygame.image.load("assets/img/arrow.png")
+        r_button = Button(button_img, r_click)
+        l_button = Button(pygame.transform.rotate(button_img, 180), l_click)
+
+        screen_w, screen_h = screen.get_size()
+        if screen_w > screen_h:
+            length = screen_h
+            x = (screen_w - length) // 2
+            y = screen_h // 2
+            button_y = screen_h
+        else:
+            length = screen_w
+            x = 0
+            y = screen_h // 2
+            button_y = y + length // 2
+        button_l = length // 15
+
+        while True:
+            for event in pygame.event.get():
+                if check_event(event) == pygame.VIDEORESIZE:
+                    opposing_ss = opponent.get_opposing_snapshot(
+                        screen.get_size())
+                    screen_w, screen_h = screen.get_size()
+                    if screen_w > screen_h:
+                        length = screen_h
+                        x = (screen_w - length) // 2
+                        y = screen_h // 2
+                        button_y = screen_h
+                    else:
+                        length = screen_w
+                        x = 0
+                        y = screen_h // 2
+                        button_y = y + length // 2
+                    button_l = length // 10
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        return False
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    mouse_pos = pygame.mouse.get_pos()
+                    l_button.check_pressed(mouse_pos)
+                    r_button.check_pressed(mouse_pos)
+            
+            screen.fill(BACKGROUND)
+            screen.blit(opposing_ss, (0, 0))
+            self.render(screen)
+            self._focus_on(screen, card)
+            textbox.render(screen, (x, y, length, length // 2))
+            l_button.render(screen, (x, button_y-button_l, button_l, button_l))
+            r_button.render(screen,
+                            (
+                                x+length-button_l,
+                                button_y-button_l,
+                                button_l, button_l
+                            ))
+            pygame.display.flip()
+            pygame.time.Clock().tick(30)
     
     def choose_action(self, screen, check_event, opponent):
         opposing_ss = opponent.get_opposing_snapshot(screen.get_size())
@@ -176,7 +272,17 @@ class Player:
                     opposing_ss = opponent.get_opposing_snapshot(
                         screen.get_size())
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if self._on_hand_loc(screen, mouse_pos):
+
+                    # ATTACK, MOVE, or RETREAT
+                    fl_space = self._selected_from_front_line(mouse_pos)
+                    if fl_space is not None:
+                        self._pkmn_action(screen, check_event, opponent,
+                                          fl_space)
+                        opposing_ss = opponent.get_opposing_snapshot(
+                            screen.get_size())
+
+                    # PLAY, EVOLVE, or ATTACH
+                    elif self._on_hand_loc(screen, mouse_pos):
                         start, gap, _ = self._get_hand_coords()
                         selected = self._selected_from_hand(start, gap,
                                                             mouse_pos)
@@ -184,9 +290,15 @@ class Player:
                         if self._place_card(screen, check_event, opponent,
                                             card):
                             del self.hand[selected]
+                        opposing_ss = opponent.get_opposing_snapshot(
+                            screen.get_size())
+
+                    # DRAW
                     elif self._deck_card.contains_point(mouse_pos):
                         card = self.draw(1)
                         self.hand.extend(card)
+                        opposing_ss = opponent.get_opposing_snapshot(
+                            screen.get_size())
 
             mouse_pos = pygame.mouse.get_pos()
             screen.fill(BACKGROUND)

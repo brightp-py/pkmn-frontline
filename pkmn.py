@@ -4,6 +4,7 @@ from collections import defaultdict
 from functools import lru_cache
 
 import pygame
+pygame.init()
 
 with open("assets/energy/tiles.json", 'r', encoding='utf-8') as f:
     ENERGY_TILE_DATA = json.load(f)
@@ -97,7 +98,7 @@ class Card:
         """
         if centered:
             rect = (rect[0]-rect[2]//2, rect[1]-rect[3]//2, rect[2], rect[3])
-        x, y, w, h = fit_within(rect, (self._w, self._h))
+        x, y, w, h = fit_within(rect, self._orig_image.get_size())
         self._x, self._y = x, y
         if w != self._w and h != self._h:
             try:
@@ -166,6 +167,10 @@ class Unit(Card):
     def placement(self):
         """Get placement attribute."""
         return self._placement
+    
+    def move_texts(self):
+        """Create a list of strings describing this Pokemon's moves."""
+        return [str(move) for move in self._moves]
     
     def attach(self, card):
         """Attach another card to this one.
@@ -344,11 +349,20 @@ class Pokemon:
 
 class Move:
 
-    def __init__(self, name, energy, damage, effect):
+    def __init__(self, name, energy, damage, effect, text=None):
         self._name = name
         self._energy = energy
         self._damage = damage
         self._effect = effect
+        if text:
+            self._text = text
+        else:
+            self._text = ""
+    
+    def __str__(self):
+        if self._text:
+            return f"{self._name}\n{str(self._damage)} Damage\n\n{self._text}"
+        return f"{self._name}\n{str(self._damage)} Damage"
 
     @staticmethod
     def from_dict(d):
@@ -362,13 +376,18 @@ class Move:
         """
         name = d['name']
         energy = d['energy']
-        damage = d['damage']
+        damage = 0
         effect = []
+        text = ""
 
+        if 'damage' in d:
+            damage = d['damage']
         if 'effect' in d:
             effect = d['effect']
+        if 'text' in d:
+            text = d['text']
         
-        return Move(name, energy, damage, effect)
+        return Move(name, energy, damage, effect, text)
     
     def sufficient_energy(self, energy):
         """Check if the given energy is enough to use this move.

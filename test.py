@@ -2,6 +2,7 @@ import sys
 import json
 
 import pygame
+pygame.init()
 
 import board, pkmn
 
