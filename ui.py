@@ -69,6 +69,7 @@ class TextBox:
     def __init__(self, text):
         """Create a text box that contains and wraps text."""
         self._text = text
+        self._rect = (0, 0, 0, 0)
     
     @lru_cache(16)
     def _generate_text_img(self, size, text, do_title=True):
@@ -134,3 +135,10 @@ class TextBox:
         image = self._generate_text_img(rect[2:], self._text)
         screen.blit(image, rect[:2])
         pygame.draw.rect(screen, TextBox.fg, rect, width=3)
+        self._rect = rect
+    
+    def contains(self, point):
+        """Return true if point (x, y) lies in this (x, y, w, h)."""
+        x0, y0 = point
+        x, y, w, h = self._rect
+        return x <= x0 and x0 <= x + w and y <= y0 and y0 <= y + h

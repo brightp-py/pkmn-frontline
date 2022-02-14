@@ -123,6 +123,33 @@ class Player:
             self.front_line[position].attach(card)
             self.front_line[position].add_energy(card)
     
+    def _front_line_screen(self, screen, check_event, opponent, card, valid):
+        """Let the user selected one of the front line slots.
+        
+        Returns the index of the slot selected, or None if bailed out.
+        """
+        opposing_ss = opponent.get_opposing_snapshot(screen.get_size())
+        while True:
+            mouse_pos = pygame.mouse.get_pos()
+            for event in pygame.event.get():
+                if check_event(event) == pygame.VIDEORESIZE:
+                    opposing_ss = opponent.get_opposing_snapshot(
+                        screen.get_size())
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        return None
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    selected = self._selected_from_front_line(mouse_pos)
+                    if selected is not None and selected in valid:
+                        return selected
+
+                screen.fill(BACKGROUND)
+                screen.blit(opposing_ss, (0, 0))
+                self.render(screen)
+                self._focus_on(screen, card)
+                pygame.display.flip()
+                pygame.time.Clock().tick(30)
+    
     def _place_card(self, screen, check_event, opponent, card):
         """Place the provided card somewhere on the frontline.
 
@@ -133,7 +160,7 @@ class Player:
             card   - Card object to place.
         
         Returns:
-            True if card was successfully place, False otherwise.
+            True if card was successfully placed, False otherwise.
         """
         placement = card.placement()
         if placement == "basic":
@@ -149,29 +176,13 @@ class Player:
         
         if not valid:
             return False
-        
-        opposing_ss = opponent.get_opposing_snapshot(screen.get_size())
-        while True:
-            mouse_pos = pygame.mouse.get_pos()
-            for event in pygame.event.get():
-                if check_event(event) == pygame.VIDEORESIZE:
-                    opposing_ss = opponent.get_opposing_snapshot(
-                        screen.get_size())
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        return False
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    selected = self._selected_from_front_line(mouse_pos)
-                    if selected is not None and selected in valid:
-                        self._card_to_front_line(card, selected)
-                        return True
 
-                screen.fill(BACKGROUND)
-                screen.blit(opposing_ss, (0, 0))
-                self.render(screen)
-                self._focus_on(screen, card)
-                pygame.display.flip()
-                pygame.time.Clock().tick(30)
+        selected = self._front_line_screen(screen, check_event, opponent, card,
+                                           valid)
+        if selected is None:
+            return False
+        self._card_to_front_line(card, selected)
+        return True
     
     def _pkmn_action(self, screen, check_event, opponent, fl_space):
         """Choose between attack, move, or retreat for the selected Pokemon.
@@ -208,15 +219,47 @@ class Player:
         
         def ok_click():
             nonlocal current
+
             if current == 0:    # MOVE
-                valid = [i for i in range(len(self._front_line))
-                            if self._front_line[i] is None]
-                if valid:
+                valid = [i for i in range(len(self.front_line))
+                            if self.front_line[i] is None]
+                if not valid:
+                    return False
+                selected = self._front_line_screen(screen, check_event,
+                                                   opponent, card, valid)
+                if selected is None:
+                    return False
+                self.front_line[fl_space], self.front_line[selected] = \
+                    self.front_line[selected], self.front_line[fl_space]
+                return True
+            
+            elif current == 1:  # RETREAT
+                if not card.sufficient_energy(card.retreat_energy()):
+                    return False
+                cost = card.retreat_cost()
+                valid = [i for i in range(len(self.front_line)) if
+                            self.front_line[i] is None or
+                            self.front_line[i].retreat_cost() <= cost]
+                if not valid:
+                    return False
+                selected = self._front_line_screen(screen, check_event,
+                                                   opponent, card, valid)
+                if selected is None:
+                    return False
+                self.front_line[fl_space], self.front_line[selected] = \
+                    self.front_line[selected], self.front_line[fl_space]
+                to_hand = card.discard_energy(card.retreat_energy())
+                self.hand.extend(to_hand)
+                return True
+            
+            return False
 
+        arrow_img = pygame.image.load("assets/img/arrow.png")
+        use_img = pygame.image.load("assets/img/use_button.png")
 
-        button_img = pygame.image.load("assets/img/arrow.png")
-        r_button = Button(button_img, r_click)
-        l_button = Button(pygame.transform.rotate(button_img, 180), l_click)
+        r_button = Button(arrow_img, r_click)
+        l_button = Button(pygame.transform.rotate(arrow_img, 180), l_click)
+        ok_button = Button(use_img)
 
         screen_w, screen_h = screen.get_size()
         if screen_w > screen_h:
@@ -255,9 +298,11 @@ class Player:
                     mouse_pos = pygame.mouse.get_pos()
                     l_button.check_pressed(mouse_pos)
                     r_button.check_pressed(mouse_pos)
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_RETURN:
-                        ok_click()
+                    if ok_button.check_pressed(mouse_pos):
+                        if ok_click():
+                            return True
+                    if not textbox.contains(mouse_pos):
+                        return False
             
             screen.fill(BACKGROUND)
             screen.blit(opposing_ss, (0, 0))
@@ -271,6 +316,12 @@ class Player:
                                 button_y-button_l,
                                 button_l, button_l
                             ))
+            ok_button.render(screen,
+                             (
+                                x+(length-button_l)//2,
+                                button_y-button_l,
+                                button_l, button_l
+                             ))
             pygame.display.flip()
             pygame.time.Clock().tick(30)
     

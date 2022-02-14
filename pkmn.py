@@ -124,6 +124,8 @@ class Card:
 
 
 class Energy(Card):
+    NAMES = ["dark", "electric", "fairy", "fighting", "fire", "grass",
+             "psychic", "steel", "water"]
 
     def __init__(self, name):
         super().__init__(pygame.image.load(f"assets/energy/{name}.png"))
@@ -167,6 +169,16 @@ class Unit(Card):
     def placement(self):
         """Get placement attribute."""
         return self._placement
+
+    def retreat_cost(self):
+        """Get retreat_cost attribute."""
+        return self._retreat_cost
+    
+    def retreat_energy(self):
+        """Get a dict of {'colorless': retreat_cost}."""
+        if not self._retreat_cost:
+            return {}
+        return {"colorless": self._retreat_cost}
     
     def move_texts(self):
         """Create a list of strings describing this Pokemon's moves."""
@@ -222,6 +234,68 @@ class Unit(Card):
                     a = 0
                     x -= 5 * orb_len
                     y += orb_len
+    
+    def sufficient_energy(self, energy):
+        """Check if this unit has enough energy for some action.
+        
+        Parameters:
+            energy - defaultdict of energies with elements as keys and amounts
+                   | as values.
+        
+        Returns:
+            True if sufficient, False otherwise.
+        """
+        if "colorless" in energy:
+            colorless_needed = energy["colorless"]
+        else:
+            colorless_needed = 0
+        for e in Energy.NAMES:
+            if e in energy:
+                if energy[e] > self._energies[e]:
+                    return False
+                else:
+                    colorless_needed -= self._energies[e] - energy[e]
+            elif e in self._energies:
+                colorless_needed -= self._energies[e]
+        return colorless_needed <= 0
+    
+    def discard_energy(self, energy):
+        """Remove energy cards from this Pokemon to be added to the discard.
+        
+        Parameters:
+            energy - defaultdict of energies with elements as keys and amounts
+                   | as values.
+        
+        Returns:
+            list of Card objects that were removed.
+        """
+        discarded = []
+        kept = []
+        for att in self._attached:
+            name = att.name()
+            if isinstance(att, Energy) and name in energy and energy[name] > 0:
+                discarded.append(att)
+                energy[name] -= 1
+                self._energies[name] -= 1
+            else:
+                kept.append(att)
+        for i in range(len(kept)-1, -1, -1):
+            if "colorless" not in energy or energy["colorless"] < 1:
+                break
+            if kept[i].name() != self._element:
+                energy["colorless"] -= 1
+                self._energies[kept[i].name()] -= 1
+                discarded.append(kept[i])
+                del kept[i]
+        for i in range(len(kept)-1, -1, -1):
+            if "colorless" not in energy or energy["colorless"] < 1:
+                break
+            energy["colorless"] -= 1
+            self._energies[kept[i].name()] -= 1
+            discarded.append(kept[i])
+            del kept[i]
+        self._attached = kept
+        return discarded
     
     def evolves_from(self, other):
         """Return True if this Pokemon evolves from `other`."""
@@ -363,6 +437,10 @@ class Move:
         if self._text:
             return f"{self._name}\n{str(self._damage)} Damage\n\n{self._text}"
         return f"{self._name}\n{str(self._damage)} Damage"
+    
+    def energy(self):
+        """Return energy attribute."""
+        return self._energy
 
     @staticmethod
     def from_dict(d):
@@ -388,21 +466,6 @@ class Move:
             text = d['text']
         
         return Move(name, energy, damage, effect, text)
-    
-    def sufficient_energy(self, energy):
-        """Check if the given energy is enough to use this move.
-        
-        Parameters:
-            energy - defaultdict of energies with elements as keys and amounts
-                   | as values.
-        
-        Returns:
-            True if sufficient, False otherwise.
-        """
-        for e in self._energy:
-            if energy[e] < self._energy[e]:
-                return False
-        return True
 
 
 CARDBACK = Card.cardback()
