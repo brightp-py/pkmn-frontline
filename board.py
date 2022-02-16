@@ -19,12 +19,30 @@ class Player:
             deck - list of Card objects.
         """
         self.deck = deck
+        self.shuffle()
         self.prize_cards = self.draw(round(len(deck)/10))
         self.hand = []
         self.discard_pile = []
         self.front_line = [None, None, None, None]
 
         self._deck_card = pkmn.Card.cardback()
+    
+    @staticmethod
+    def from_deck_dict(d):
+        """Create an instance of a Player with the given dict as a deck.
+        
+        Parameters:
+            d - dict with attributes "name", "energy", "pokemon"
+        """
+        deck = []
+        for name in d['pokemon']:
+            p = pkmn.Pokemon.from_id(name)
+            for _ in range(d['pokemon'][name]):
+                deck.append(p.build_unit())
+        for energy in d['energy']:
+            for _ in range(d['energy'][energy]):
+                deck.append(pkmn.Energy(energy))
+        return Player(deck)
     
     def _focus_on(self, screen, card):
         """Display the given Card as big as possible on the top half."""
@@ -122,6 +140,18 @@ class Player:
         elif placement == "energy":
             self.front_line[position].attach(card)
             self.front_line[position].add_energy(card)
+    
+    def _discard_front_line(self, i):
+        """Discard the card at the given spot of the front line, with attached.
+        
+        Parameters:
+            i - Index of card in front line.
+        """
+        card = self.front_line[i]
+        stowaways = card.detach()
+        self.discard_pile.extend(stowaways)
+        self.discard_pile.append(card)
+        self.front_line[i] = None
     
     def _front_line_screen(self, screen, check_event, opponent, card, valid):
         """Let the user selected one of the front line slots.
@@ -252,7 +282,17 @@ class Player:
                 self.hand.extend(to_hand)
                 return True
             
-            return False
+            else:               # ATTACK
+                move_id = current - 2
+                if not card.can_use_move(move_id):
+                    return False
+                target = opponent.opposite_space(fl_space)
+                to_hand = card.attack(move_id, target, self, opponent, screen,
+                                      check_event)
+                self.hand.extend(to_hand)
+                opponent.remove_fainted()
+                self.remove_fainted()
+                return True
 
         arrow_img = pygame.image.load("assets/img/arrow.png")
         use_img = pygame.image.load("assets/img/use_button.png")
@@ -325,6 +365,60 @@ class Player:
             pygame.display.flip()
             pygame.time.Clock().tick(30)
     
+    def receive_attack(self, screen, check_event, damage, user, _):
+        """Roll a d10, and if the result is less than damage, do prize card.
+
+        Parameters:
+
+            damage - Chance that this attack hits.
+
+            user   - Player object dealing the damage.
+        """
+        if damage == 0:
+            return False
+        
+        choices = [f"{str(i)}0" for i in range(10)]
+        defense = "00"
+
+        roll_speed = 40
+        roll_count = 0
+        roll_peak = 30
+        roll_diff = 0.5
+
+        opposing_ss = self.get_opposing_snapshot(screen.get_size())
+
+        textbox = TextBox("\n" + defense)
+        width = 100
+        height = 80
+        x, y = self._center[0] - (width // 2), self._center[1] - (height // 2)
+
+        while True:
+            for event in pygame.event.get():
+                if check_event(event) == pygame.VIDEORESIZE:
+                    opposing_ss = self.get_opposing(screen.get_size())
+                    x = self._center[0] - (width // 2)
+                    y = self._center[1] - (height // 2)
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if roll_speed <= 0:
+                        if int(defense) < damage:
+                            user.win_prize_card()
+                        return
+            
+            if roll_speed > 0:
+                roll_speed -= roll_diff
+                roll_count += roll_speed
+                if roll_count > roll_peak:
+                    roll_count = 0
+                    defense = random.choice(choices)
+                    textbox.set_text("\n" + defense)
+            
+            screen.fill(BACKGROUND)
+            screen.blit(opposing_ss, (0, 0))
+            user.render(screen)
+            textbox.render(screen, (x, y, width, height), centered=True)
+            pygame.display.flip()
+            pygame.time.Clock().tick(30)
+    
     def choose_action(self, screen, check_event, opponent):
         opposing_ss = opponent.get_opposing_snapshot(screen.get_size())
         while True:
@@ -337,9 +431,11 @@ class Player:
 
                     # ATTACK, MOVE, or RETREAT
                     fl_space = self._selected_from_front_line(mouse_pos)
-                    if fl_space is not None:
-                        self._pkmn_action(screen, check_event, opponent,
-                                          fl_space)
+                    if fl_space is not None and \
+                       self.front_line[fl_space] is not None:
+                        if self._pkmn_action(screen, check_event, opponent,
+                                          fl_space):
+                            return
                         opposing_ss = opponent.get_opposing_snapshot(
                             screen.get_size())
 
@@ -348,10 +444,13 @@ class Player:
                         start, gap, _ = self._get_hand_coords()
                         selected = self._selected_from_hand(start, gap,
                                                             mouse_pos)
+                        if selected is None:
+                            continue
                         card = self.hand[selected]
                         if self._place_card(screen, check_event, opponent,
                                             card):
                             del self.hand[selected]
+                            return
                         opposing_ss = opponent.get_opposing_snapshot(
                             screen.get_size())
 
@@ -361,6 +460,7 @@ class Player:
                         self.hand.extend(card)
                         opposing_ss = opponent.get_opposing_snapshot(
                             screen.get_size())
+                        return
 
             mouse_pos = pygame.mouse.get_pos()
             screen.fill(BACKGROUND)
@@ -385,6 +485,29 @@ class Player:
         toret = self.deck[:num]
         self.deck = self.deck[num:]
         return toret
+    
+    def win_prize_card(self):
+        """Move the top prize card from its place to the hand."""
+        self.hand.append(self.prize_cards[0])
+        self.prize_cards = self.prize_cards[1:]
+    
+    def opposite_space(self, i):
+        """Return the card that opposes the unit at position i.
+
+        Parameters:
+            i - Position of other Player's Pokemon (0-4).
+        """
+        i = 3 - i
+        card = self.front_line[i]
+        if card is None:
+            return self
+        return card
+
+    def remove_fainted(self):
+        """Remove any Pokemon on the front line that have fainted."""
+        for i, card in enumerate(self.front_line):
+            if card and card.is_fainted():
+                self._discard_front_line(i)
     
     def set_dimensions(self, size):
         """Fit the player's field to the given size.
@@ -503,7 +626,11 @@ class Board:
     
     def run_game(self):
         while True:
-            for event in pygame.event.get():
-                self._check_event(event)
             self._p1.choose_action(self._screen, self._check_event, self._p2)
+            if not self._p1.prize_cards:
+                print("Player 1 wins!")
+                break
             self._p2.choose_action(self._screen, self._check_event, self._p1)
+            if not self._p2.prize_cards:
+                print("Player 2 wins!")
+                break

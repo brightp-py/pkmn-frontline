@@ -72,7 +72,7 @@ class TextBox:
         self._rect = (0, 0, 0, 0)
     
     @lru_cache(16)
-    def _generate_text_img(self, size, text, do_title=True):
+    def _generate_text_img(self, size, text, do_title=True, centered=False):
         """Create the white-background text image.
         
         Parameters:
@@ -106,15 +106,18 @@ class TextBox:
             if do_title:
                 line = TextBox.title_font.render(text[:i], True, TextBox.fg,
                                                  TextBox.bg)
-                surface.blit(line, (x, y))
-                y += title_height + TextBox.line_spacing
+                dy = title_height + TextBox.line_spacing
                 do_title = False
             else:
                 
                 line = TextBox.font.render(text[:i], True, TextBox.fg,
                                            TextBox.bg)
+                dy = font_height + TextBox.line_spacing
+            if centered:
+                surface.blit(line, (x + ((w - line.get_width()) // 2), y))
+            else:
                 surface.blit(line, (x, y))
-                y += font_height + TextBox.line_spacing
+            y += dy
             text = text[i:]
         
         return surface
@@ -123,7 +126,7 @@ class TextBox:
         """Set the text attribute."""
         self._text = text
     
-    def render(self, screen, rect):
+    def render(self, screen, rect, centered=False):
         """Draw this text box onto another Pygame Surface.
 
         Parameters:
@@ -132,7 +135,8 @@ class TextBox:
         
             rect   - (x, y, w, h) defining white background.
         """
-        image = self._generate_text_img(rect[2:], self._text)
+        image = self._generate_text_img(rect[2:], self._text,
+                                        centered=centered)
         screen.blit(image, rect[:2])
         pygame.draw.rect(screen, TextBox.fg, rect, width=3)
         self._rect = rect

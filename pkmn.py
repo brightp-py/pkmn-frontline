@@ -10,6 +10,9 @@ with open("assets/energy/tiles.json", 'r', encoding='utf-8') as f:
     ENERGY_TILE_DATA = json.load(f)
 ENERGY_TILES = pygame.image.load("assets/energy/tiles.png")
 
+with open("assets/data/pkmn.json", 'r', encoding='utf-8') as f:
+    PKMN = json.load(f)
+
 @lru_cache(128)
 def fit_within(outer, inner):
     """Fit the inner rect within the outer, maintaining width/height ratios.
@@ -94,7 +97,7 @@ class Card:
             rect     - (x, y, w, h) the image will fit within.
 
             centered - If True, x and y represent the center of the image,
-                     | instead of the top-left corner.
+                       instead of the top-left corner.
         """
         if centered:
             rect = (rect[0]-rect[2]//2, rect[1]-rect[3]//2, rect[2], rect[3])
@@ -144,10 +147,11 @@ class Energy(Card):
 class Unit(Card):
 
     def __init__(self, name, image, hp, element, moves, retreat_cost,
-                 weakness, resistance, abilities, pre_evo):
+                 weakness, resistance, abilities, pre_evo, attributes):
         super().__init__(image)
         self._name = name
         self._hp = hp
+        self._max_hp = hp
         self._element = element
         self._moves = moves
         self._retreat_cost = retreat_cost
@@ -155,6 +159,7 @@ class Unit(Card):
         self._resistance = resistance
         self._abilities = abilities
         self._pre_evo = pre_evo
+        self.attributes = attributes
 
         self._placement = "evolved" if self._pre_evo else "basic"
         self._attached = []
@@ -165,6 +170,10 @@ class Unit(Card):
     def name(self):
         """Get name attribute."""
         return self._name
+    
+    def element(self):
+        """Get element attribute."""
+        return self._element
     
     def placement(self):
         """Get placement attribute."""
@@ -183,6 +192,10 @@ class Unit(Card):
     def move_texts(self):
         """Create a list of strings describing this Pokemon's moves."""
         return [str(move) for move in self._moves]
+    
+    def is_fainted(self):
+        """Return True if this unit's health is 0 or lower."""
+        return self._hp <= 0
     
     def attach(self, card):
         """Attach another card to this one.
@@ -220,27 +233,38 @@ class Unit(Card):
         """
         self.render(screen, rect)
         x, y, w, h = fit_within(rect, (self._w, self._h))
-        orb_len = w // 5
-        y += h
-        a = 0
 
+        # energy orbs
+        orb_len = w // 5
+        orb_x = x
+        orb_y = y + h
+        a = 0
         for e in self._energies:
             img = energy_orb(e, orb_len)
             for _ in range(self._energies[e]):
-                screen.blit(img, (x, y))
-                x += orb_len
+                screen.blit(img, (orb_x, orb_y))
+                orb_x += orb_len
                 a += 1
                 if a > 4:
                     a = 0
-                    x -= 5 * orb_len
-                    y += orb_len
+                    orb_x -= 5 * orb_len
+                    orb_y += orb_len
+        
+        # health bar
+        bar_w = (4 * w) // 5
+        green_w = (bar_w * self._hp) // self._max_hp
+        x, y = x + (w // 10), y + (h // 10)
+        bar_h = h // 20
+        pygame.draw.rect(screen, (0, 0, 0), (x, y, bar_w, bar_h))
+        pygame.draw.rect(screen, (0, 255, 0), (x, y, green_w, bar_h))
+        pygame.draw.rect(screen, (0, 0, 0), (x, y, bar_w, bar_h), 2)
     
     def sufficient_energy(self, energy):
         """Check if this unit has enough energy for some action.
         
         Parameters:
             energy - defaultdict of energies with elements as keys and amounts
-                   | as values.
+                     as values.
         
         Returns:
             True if sufficient, False otherwise.
@@ -259,17 +283,65 @@ class Unit(Card):
                 colorless_needed -= self._energies[e]
         return colorless_needed <= 0
     
+    def can_use_move(self, move_index):
+        """Return True if this unit has enough energy to use the given move.
+        
+        Parameters:
+            move_index - int of move's index in self._moves.
+        """
+        move = self._moves[move_index]
+        return self.sufficient_energy(move.energy())
+    
+    def apply_effectiveness(self, damage, element):
+        """Modify the damage based on weakness and resistance.
+        
+        Parameters:
+        
+            damage  - int of damage before weakness/resistance is applied.
+
+            element - str of the element of the attacking Pokemon.
+        """
+        if self._weakness and element == self._weakness[0]:
+            damage = self._weakness[1](damage)
+        elif self._resistance and element == self._resistance[0]:
+            damage = self._resistance[1](damage)
+        return damage
+    
+    def attack(self, move_index, target, user, opponent, screen, check_event):
+        """Deal damage to the target and apply any secondary effects.
+
+        Parameters:
+        
+            move_index - int of move's index in self._moves.
+
+            target     - Card object being attacked.
+        
+            user       - Player object using the move.
+
+            opponent   - Player object being attacked.
+
+            screen     - Pygame Surface to draw on for extra effects.
+        """
+        move = self._moves[move_index]
+        damage = move.damage()
+        result = move.run(user, self, opponent, target, damage)
+        if result is not None:
+            damage = result
+        target.receive_attack(screen, check_event, damage, user, self)
+        return self.discard_energy(move.energy())
+    
     def discard_energy(self, energy):
         """Remove energy cards from this Pokemon to be added to the discard.
         
         Parameters:
             energy - defaultdict of energies with elements as keys and amounts
-                   | as values.
+                     as values.
         
         Returns:
             list of Card objects that were removed.
         """
         discarded = []
+        nonenergy = []
         kept = []
         for att in self._attached:
             name = att.name()
@@ -277,8 +349,10 @@ class Unit(Card):
                 discarded.append(att)
                 energy[name] -= 1
                 self._energies[name] -= 1
-            else:
+            elif isinstance(att, Energy):
                 kept.append(att)
+            else:
+                nonenergy.append(att)
         for i in range(len(kept)-1, -1, -1):
             if "colorless" not in energy or energy["colorless"] < 1:
                 break
@@ -294,8 +368,16 @@ class Unit(Card):
             self._energies[kept[i].name()] -= 1
             discarded.append(kept[i])
             del kept[i]
-        self._attached = kept
+        self._attached = nonenergy + kept
         return discarded
+    
+    def detach(self):
+        """Remove all attached cards and return them."""
+        self._energies = defaultdict(lambda: 0)
+        toret = self._attached
+        self._attached = []
+        self._hp = self._max_hp
+        return toret
     
     def evolves_from(self, other):
         """Return True if this Pokemon evolves from `other`."""
@@ -310,6 +392,8 @@ class Unit(Card):
         card.attach(self._attached)
         card.attach(self)
         card.add_energy(self._energies)
+        card.take_damage(self._max_hp - self._hp)
+        self._hp = self._max_hp
     
     def take_damage(self, amount):
         """Subtract some amount of damage from this unit's hit points.
@@ -319,13 +403,14 @@ class Unit(Card):
         self._hp -= amount
         return self._hp <= 0
     
-    def receive_attack(self, damage):
+    def receive_attack(self, _, __, damage, ___, attacker):
         """Receive some damage from an attack.
 
         This needs to be separate from `take_damage` because certain Pokemon
         have abilities that activate when being attacked, but not when taking
         damage in general.
         """
+        damage = self.apply_effectiveness(damage, attacker.element())
         return self.take_damage(damage)
 
 
@@ -333,7 +418,7 @@ class Pokemon:
 
     def __init__(self, name, img_id, max_hp, element, moves, retreat_cost,
                  weakness=None, resistance=None, abilities = None,
-                 pre_evo=None):
+                 pre_evo=None, attributes=None):
         """Initialize a type of Pokemon card.
 
         Attributes:
@@ -347,7 +432,7 @@ class Pokemon:
             resistance   - tuple of (element, lambda function to apply).
             abilities    - List of Ability objects. (To be implemented.)
             pre_evo      - Name of the Pokemon this Pokemon evolves from.
-                         | NONE for basic Pokemon.
+                           NONE for basic Pokemon.
         """
         self._name = name
         self._max_hp = max_hp
@@ -358,9 +443,19 @@ class Pokemon:
         self._resistance = resistance
         self._abilities = abilities
         self._pre_evo = pre_evo
+        self.attributes = attributes
 
         self._img_id = img_id
         self._image = self.load_image(img_id)
+    
+    @staticmethod
+    def from_id(name):
+        """Create a new Pokemon object from its identification name.
+        
+        Parameters:
+            name - str identifying the Pokemon, as it appears in pkmn.json.
+        """
+        return Pokemon.from_dict(PKMN[name])
     
     @staticmethod
     def from_dict(d):
@@ -383,18 +478,46 @@ class Pokemon:
         resistance = None
         abilities = []
         pre_evo = None
+        attributes = {}
         
         if 'weakness' in d:
-            weakness = d['weakness']
+            weakness = (
+                d['weakness']['element'],
+                Pokemon._effectiveness_str_to_func(d['weakness']['lambda'])
+            )
         if 'resistance' in d:
-            resistance = d['resistance']
+            resistance = (
+                d['resistance']['element'],
+                Pokemon._effectiveness_str_to_func(d['resistance']['lambda'])
+            )
         if 'abilities' in d:
             pass    # TODO
         if 'pre_evo' in d:
             pre_evo = d['pre_evo']
+        if 'attributes' in d:
+            attributes = d['attributes']
         
         return Pokemon(name, img_id, max_hp, element, moves, retreat_cost,
-                       weakness, resistance, abilities, pre_evo)
+                       weakness, resistance, abilities, pre_evo, attributes)
+    
+    @staticmethod
+    def _effectiveness_str_to_func(s):
+        """Convert a string showing weakness/resistance effect into a function.
+        
+        Parameters:
+            s - str like "*2", "-30"
+        """
+        i = int(s[1:])
+        o = s[0]
+        if o in ['*', 'x']:
+            return lambda x: x * i
+        elif o == '-':
+            return lambda x: x - i
+        elif o == '/':
+            return lambda x: x // i
+        elif o == '+':
+            return lambda x: x + i
+        return lambda x: x
 
     def load_image(self, img_id):
         """Create a Pygame Surface object of the given file.
@@ -418,7 +541,8 @@ class Pokemon:
         """Create a new Unit object with this Pokemon's attributes."""
         return Unit(self._name, self._image, self._max_hp, self._element,
                     self._moves[:], self._retreat_cost, self._weakness,
-                    self._resistance, self._abilities[:], self._pre_evo)
+                    self._resistance, self._abilities[:], self._pre_evo,
+                    self.attributes.copy())
 
 
 class Move:
@@ -438,9 +562,13 @@ class Move:
             return f"{self._name}\n{str(self._damage)} Damage\n\n{self._text}"
         return f"{self._name}\n{str(self._damage)} Damage"
     
+    def damage(self):
+        """Return damage attribute."""
+        return self._damage
+    
     def energy(self):
         """Return energy attribute."""
-        return self._energy
+        return self._energy.copy()
 
     @staticmethod
     def from_dict(d):
@@ -466,6 +594,23 @@ class Move:
             text = d['text']
         
         return Move(name, energy, damage, effect, text)
+    
+    def run(self, user, attacker, opponent, target, damage):
+        """Run this move's special effects.
+        
+        Parameters:
+
+            user     - Player object that owns Pokemon being played.
+
+            attacker - Pokemon using this move.
+
+            opponent - Player object receiving the attack.
+
+            target   - Pokemon object being attacked.
+
+            damage   - Starting damage before weakness/resistance.
+        """
+        return None
 
 
 CARDBACK = Card.cardback()

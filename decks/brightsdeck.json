@@ -1,0 +1,27 @@
+{
+    "name": "Bright's Deck",
+    "energy": {
+        "psychic": 6,
+        "water": 6
+    },
+    "pokemon": {
+        "fs050shellder": 2,
+        "fs054lapras": 1,
+        "fs058marill": 2,
+        "fs059azumarill": 2,
+        "fs084snom": 2,
+        "fs085frosmoth": 1,
+        "fs110jigglypuff": 4,
+        "fs111wigglytuff": 1,
+        "fs112jynx": 1,
+        "fs117galariancorsola": 1,
+        "fs121munna": 2,
+        "fs122musharna": 1,
+        "fs123sigilyph": 1,
+        "fs128dreepy": 1,
+        "fs129drakloak": 1,
+        "fs195goomy": 2,
+        "fs196sliggoo": 2,
+        "fs221wooloo": 1
+    }
+}
