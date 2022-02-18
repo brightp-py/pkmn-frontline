@@ -6,12 +6,15 @@ from functools import lru_cache
 import pygame
 pygame.init()
 
+from moves import move_by_id
+
 with open("assets/energy/tiles.json", 'r', encoding='utf-8') as f:
     ENERGY_TILE_DATA = json.load(f)
 ENERGY_TILES = pygame.image.load("assets/energy/tiles.png")
 
-with open("assets/data/pkmn.json", 'r', encoding='utf-8') as f:
-    PKMN = json.load(f)
+PKMN = {}
+with open("assets/data/pkmn_fs.json", 'r', encoding='utf-8') as f:
+    PKMN |= json.load(f)
 
 @lru_cache(128)
 def fit_within(outer, inner):
@@ -164,7 +167,7 @@ class Unit(Card):
         self._placement = "evolved" if self._pre_evo else "basic"
         self._attached = []
 
-        self._energies = defaultdict(lambda: 0)
+        self._energy = defaultdict(lambda: 0)
         self._affliction = None
     
     def name(self):
@@ -175,6 +178,14 @@ class Unit(Card):
         """Get element attribute."""
         return self._element
     
+    def moves(self):
+        """Get moves attribute as a copy."""
+        return self._moves[:]
+    
+    def energy(self):
+        """Get energy attribute as a copy."""
+        return self._energy.copy()
+    
     def placement(self):
         """Get placement attribute."""
         return self._placement
@@ -182,6 +193,20 @@ class Unit(Card):
     def retreat_cost(self):
         """Get retreat_cost attribute."""
         return self._retreat_cost
+    
+    def affliction(self):
+        """Get affliction attribute."""
+        return self._affliction
+    
+    def afflict(self, affliction):
+        """Set affliction attributes."""
+        if affliction is None:
+            self._affliction = affliction
+            return
+        affliction = affliction.lower()
+        if affliction in ("asleep", "burned", "confused", "paralyzed",
+                          "poisoned"):
+            self._affliction = affliction
     
     def retreat_energy(self):
         """Get a dict of {'colorless': retreat_cost}."""
@@ -217,10 +242,10 @@ class Unit(Card):
             energy - Card that gets attached OR dict of energies.
         """
         if isinstance(energy, Energy):
-            self._energies[energy.name()] += 1
+            self._energy[energy.name()] += 1
         elif isinstance(energy, dict):
             for name in energy:
-                self._energies[name] += energy[name]
+                self._energy[name] += energy[name]
     
     def render_with_energy(self, screen, rect):
         """Draw this card on the screen with energy orbs.
@@ -239,9 +264,9 @@ class Unit(Card):
         orb_x = x
         orb_y = y + h
         a = 0
-        for e in self._energies:
+        for e in self._energy:
             img = energy_orb(e, orb_len)
-            for _ in range(self._energies[e]):
+            for _ in range(self._energy[e]):
                 screen.blit(img, (orb_x, orb_y))
                 orb_x += orb_len
                 a += 1
@@ -251,12 +276,23 @@ class Unit(Card):
                     orb_y += orb_len
         
         # health bar
+        colors = {
+            'paralyzed': (245, 245, 0),
+            'asleep': (245, 245, 245),
+            'poisoned': (125, 0, 140),
+            'confused': (0, 245, 245),
+            'burned': (245, 125, 0)
+        }
+        if self._affliction is not None:
+            color = colors[self._affliction]
+        else:
+            color = (0, 245, 0)
         bar_w = (4 * w) // 5
         green_w = (bar_w * self._hp) // self._max_hp
         x, y = x + (w // 10), y + (h // 10)
         bar_h = h // 20
         pygame.draw.rect(screen, (0, 0, 0), (x, y, bar_w, bar_h))
-        pygame.draw.rect(screen, (0, 255, 0), (x, y, green_w, bar_h))
+        pygame.draw.rect(screen, color, (x, y, green_w, bar_h))
         pygame.draw.rect(screen, (0, 0, 0), (x, y, bar_w, bar_h), 2)
     
     def sufficient_energy(self, energy):
@@ -275,12 +311,12 @@ class Unit(Card):
             colorless_needed = 0
         for e in Energy.NAMES:
             if e in energy:
-                if energy[e] > self._energies[e]:
+                if energy[e] > self._energy[e]:
                     return False
                 else:
-                    colorless_needed -= self._energies[e] - energy[e]
-            elif e in self._energies:
-                colorless_needed -= self._energies[e]
+                    colorless_needed -= self._energy[e] - energy[e]
+            elif e in self._energy:
+                colorless_needed -= self._energy[e]
         return colorless_needed <= 0
     
     def can_use_move(self, move_index):
@@ -307,7 +343,8 @@ class Unit(Card):
             damage = self._resistance[1](damage)
         return damage
     
-    def attack(self, move_index, target, user, opponent, screen, check_event):
+    def attack(self, move_index, target, user, opponent, fl_spot, screen,
+               check_event):
         """Deal damage to the target and apply any secondary effects.
 
         Parameters:
@@ -324,7 +361,8 @@ class Unit(Card):
         """
         move = self._moves[move_index]
         damage = move.damage()
-        result = move.run(user, self, opponent, target, damage)
+        result = move.run(user, self, opponent, target, damage, fl_spot,
+                          screen, check_event)
         if result is not None:
             damage = result
         target.receive_attack(screen, check_event, damage, user, self)
@@ -348,7 +386,7 @@ class Unit(Card):
             if isinstance(att, Energy) and name in energy and energy[name] > 0:
                 discarded.append(att)
                 energy[name] -= 1
-                self._energies[name] -= 1
+                self._energy[name] -= 1
             elif isinstance(att, Energy):
                 kept.append(att)
             else:
@@ -358,14 +396,14 @@ class Unit(Card):
                 break
             if kept[i].name() != self._element:
                 energy["colorless"] -= 1
-                self._energies[kept[i].name()] -= 1
+                self._energy[kept[i].name()] -= 1
                 discarded.append(kept[i])
                 del kept[i]
         for i in range(len(kept)-1, -1, -1):
             if "colorless" not in energy or energy["colorless"] < 1:
                 break
             energy["colorless"] -= 1
-            self._energies[kept[i].name()] -= 1
+            self._energy[kept[i].name()] -= 1
             discarded.append(kept[i])
             del kept[i]
         self._attached = nonenergy + kept
@@ -373,7 +411,7 @@ class Unit(Card):
     
     def detach(self):
         """Remove all attached cards and return them."""
-        self._energies = defaultdict(lambda: 0)
+        self._energy = defaultdict(lambda: 0)
         toret = self._attached
         self._attached = []
         self._hp = self._max_hp
@@ -391,7 +429,7 @@ class Unit(Card):
         """
         card.attach(self._attached)
         card.attach(self)
-        card.add_energy(self._energies)
+        card.add_energy(self._energy)
         card.take_damage(self._max_hp - self._hp)
         self._hp = self._max_hp
     
@@ -547,7 +585,7 @@ class Pokemon:
 
 class Move:
 
-    def __init__(self, name, energy, damage, effect, text=None):
+    def __init__(self, name, energy, damage, effect, text=None, move_id=None):
         self._name = name
         self._energy = energy
         self._damage = damage
@@ -556,11 +594,17 @@ class Move:
             self._text = text
         else:
             self._text = ""
+        self._move_id = move_id
+        self._move_f = move_by_id(move_id)
     
     def __str__(self):
         if self._text:
             return f"{self._name}\n{str(self._damage)} Damage\n\n{self._text}"
         return f"{self._name}\n{str(self._damage)} Damage"
+    
+    def name(self):
+        """Return name attribute."""
+        return self._name
     
     def damage(self):
         """Return damage attribute."""
@@ -585,6 +629,7 @@ class Move:
         damage = 0
         effect = []
         text = ""
+        move_id = None
 
         if 'damage' in d:
             damage = d['damage']
@@ -592,10 +637,13 @@ class Move:
             effect = d['effect']
         if 'text' in d:
             text = d['text']
+        if 'move_id' in d:
+            move_id = d['move_id']
         
-        return Move(name, energy, damage, effect, text)
+        return Move(name, energy, damage, effect, text, move_id)
     
-    def run(self, user, attacker, opponent, target, damage):
+    def run(self, user, attacker, opponent, target, damage, fl_spot, screen,
+            check_event):
         """Run this move's special effects.
         
         Parameters:
@@ -609,8 +657,12 @@ class Move:
             target   - Pokemon object being attacked.
 
             damage   - Starting damage before weakness/resistance.
+
+            fl_spot  - int of which front line slot the attacker is in
         """
-        return None
+        if self._move_f:
+            return self._move_f(user, attacker, opponent, target, damage,
+                                fl_spot, screen, check_event)
 
 
 CARDBACK = Card.cardback()

@@ -153,11 +153,26 @@ class Player:
         self.discard_pile.append(card)
         self.front_line[i] = None
     
-    def _front_line_screen(self, screen, check_event, opponent, card, valid):
+    def front_line_screen(self, screen, check_event, opponent, valid,
+                          card=None, help_text=None, text_on_top=False):
         """Let the user selected one of the front line slots.
         
         Returns the index of the slot selected, or None if bailed out.
         """
+        if help_text:
+            textbox = TextBox(help_text)
+            screen_w, screen_h = screen.get_size()
+            if screen_w > screen_h:
+                text_l = screen_h
+                text_x = (screen_w - text_l) // 2
+            else:
+                text_l = screen_w
+                text_x = 0
+            if text_on_top:
+                text_y = 0
+            else:
+                text_y = screen_h - (text_l // 5)
+
         opposing_ss = opponent.get_opposing_snapshot(screen.get_size())
         while True:
             mouse_pos = pygame.mouse.get_pos()
@@ -165,6 +180,18 @@ class Player:
                 if check_event(event) == pygame.VIDEORESIZE:
                     opposing_ss = opponent.get_opposing_snapshot(
                         screen.get_size())
+                    if help_text:
+                        screen_w, screen_h = screen.get_size()
+                        if screen_w > screen_h:
+                            text_l = screen_h
+                            text_x = (screen_w - text_l) // 2
+                        else:
+                            text_l = screen_w
+                            text_x = 0
+                        if text_on_top:
+                            text_y = 0
+                        else:
+                            text_y = screen_h - (text_l // 5)
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         return None
@@ -176,7 +203,72 @@ class Player:
                 screen.fill(BACKGROUND)
                 screen.blit(opposing_ss, (0, 0))
                 self.render(screen)
-                self._focus_on(screen, card)
+                if card:
+                    self._focus_on(screen, card)
+                if help_text:
+                    textbox.render(screen, (text_x, text_y, text_l, text_l//5),
+                                   do_title=False)
+                pygame.display.flip()
+                pygame.time.Clock().tick(30)
+
+    def front_line_opponent(self, screen, check_event, opponent, valid,
+                            card=None, help_text=None, text_on_top=False):
+        """Let the user selected one of the opponent's front line slots.
+        
+        Returns the index of the slot selected, or None if bailed out.
+        """
+        if help_text:
+            textbox = TextBox(help_text)
+            screen_w, screen_h = screen.get_size()
+            if screen_w > screen_h:
+                text_l = screen_h
+                text_x = (screen_w - text_l) // 2
+            else:
+                text_l = screen_w
+                text_x = 0
+            if text_on_top:
+                text_y = 0
+            else:
+                text_y = screen_h - (text_l // 5)
+        
+        opposing_ss = opponent.get_opposing_snapshot(screen.get_size())
+        while True:
+            mouse_pos = pygame.mouse.get_pos()
+            for event in pygame.event.get():
+                if check_event(event) == pygame.VIDEORESIZE:
+                    opposing_ss = opponent.get_opposing_snapshot(
+                        screen.get_size())
+                    if help_text:
+                        screen_w, screen_h = screen.get_size()
+                        if screen_w > screen_h:
+                            text_l = screen_h
+                            text_x = (screen_w - text_l) // 2
+                        else:
+                            text_l = screen_w
+                            text_x = 0
+                        if text_on_top:
+                            text_y = 0
+                        else:
+                            text_y = screen_h - (text_l // 5)
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        return None
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    selected = self._selected_from_front_line(
+                        (screen.get_width()-mouse_pos[0],
+                        screen.get_height()-mouse_pos[1])
+                    )
+                    if selected is not None and selected in valid:
+                        return selected
+
+                screen.fill(BACKGROUND)
+                screen.blit(opposing_ss, (0, 0))
+                self.render(screen)
+                if card:
+                    self._focus_on(screen, card)
+                if help_text:
+                    textbox.render(screen, (text_x, text_y, text_l, text_l//5),
+                                   do_title=False)
                 pygame.display.flip()
                 pygame.time.Clock().tick(30)
     
@@ -207,8 +299,8 @@ class Player:
         if not valid:
             return False
 
-        selected = self._front_line_screen(screen, check_event, opponent, card,
-                                           valid)
+        selected = self.front_line_screen(screen, check_event, opponent, valid,
+                                          card)
         if selected is None:
             return False
         self._card_to_front_line(card, selected)
@@ -223,17 +315,23 @@ class Player:
         Returns True if successfully executed, False otherwise.
         """
         opposing_ss = opponent.get_opposing_snapshot(screen.get_size())
-        options = [
-            "Move\n\nMove this Pokemon to an open space.\n\nThis action cannot"
-            " be taken two turns in a row.",
-            "Retreat\n\nMove this Pokemon to an open space or switch it with "
-            "another active Pokemon."
-        ]
+        card = self.front_line[fl_space]
+
+        if card.affliction() == "asleep":
+            options = ["Wake up\n\nAttempt to wake up this Pokemon, removing"
+                       " its 'asleep' affliction. Has a 50% chance of success."
+                       ]
+        else:
+            options = [
+                "Move\n\nMove this Pokemon to an open space.\n\nThis action"
+                " cannot be taken two turns in a row.",
+                "Retreat\n\nMove this Pokemon to an open space or switch it"
+                " with another active Pokemon."
+            ]
+            options.extend(card.move_texts())
 
         current = 0
         textbox = TextBox(options[0])
-        card = self.front_line[fl_space]
-        options.extend(card.move_texts())
 
         def r_click():
             nonlocal current
@@ -250,13 +348,18 @@ class Player:
         def ok_click():
             nonlocal current
 
-            if current == 0:    # MOVE
+            if card.affliction() == "asleep":   # WAKE UP
+                if random.randint(0, 1):
+                    card.afflict(None)
+                return True
+
+            elif current == 0:  # MOVE
                 valid = [i for i in range(len(self.front_line))
                             if self.front_line[i] is None]
                 if not valid:
                     return False
-                selected = self._front_line_screen(screen, check_event,
-                                                   opponent, card, valid)
+                selected = self.front_line_screen(screen, check_event,
+                                                   opponent, valid, card)
                 if selected is None:
                     return False
                 self.front_line[fl_space], self.front_line[selected] = \
@@ -272,7 +375,7 @@ class Player:
                             self.front_line[i].retreat_cost() <= cost]
                 if not valid:
                     return False
-                selected = self._front_line_screen(screen, check_event,
+                selected = self.front_line_screen(screen, check_event,
                                                    opponent, card, valid)
                 if selected is None:
                     return False
@@ -287,8 +390,8 @@ class Player:
                 if not card.can_use_move(move_id):
                     return False
                 target = opponent.opposite_space(fl_space)
-                to_hand = card.attack(move_id, target, self, opponent, screen,
-                                      check_event)
+                to_hand = card.attack(move_id, target, self, opponent,
+                                      fl_space, screen, check_event)
                 self.hand.extend(to_hand)
                 opponent.remove_fainted()
                 self.remove_fainted()

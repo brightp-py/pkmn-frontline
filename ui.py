@@ -126,7 +126,7 @@ class TextBox:
         """Set the text attribute."""
         self._text = text
     
-    def render(self, screen, rect, centered=False):
+    def render(self, screen, rect, do_title=True, centered=False):
         """Draw this text box onto another Pygame Surface.
 
         Parameters:
@@ -135,8 +135,8 @@ class TextBox:
         
             rect   - (x, y, w, h) defining white background.
         """
-        image = self._generate_text_img(rect[2:], self._text,
-                                        centered=centered)
+        image = self._generate_text_img(rect[2:], self._text, do_title,
+                                        centered)
         screen.blit(image, rect[:2])
         pygame.draw.rect(screen, TextBox.fg, rect, width=3)
         self._rect = rect

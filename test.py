@@ -6,9 +6,6 @@ pygame.init()
 
 import board
 
-with open("assets/data/pkmn.json", 'r', encoding='utf-8') as f:
-    PKMN = json.load(f)
-
 def main():
 
     with open("decks/brightsdeck.json", 'r', encoding='utf-8') as f:

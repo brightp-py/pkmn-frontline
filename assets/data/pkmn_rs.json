@@ -1,0 +1,28 @@
+{
+    "rs028natu": {
+        "attributes": {
+            "Delta Plus": 1
+        },
+        "element": "psychic",
+        "img_id": "rs028natu",
+        "max_hp": 40,
+        "moves": [
+            {
+                "damage": 10,
+                "energy": {
+                    "colorless": 1,
+                    "psychic": 1
+                },
+                "move_id": "aae11bb9deb649e9fb1b",
+                "name": "Psywave",
+                "text": "This attack does 10 more damage for each Energy attached to the Defending Pokemon."
+            }
+        ],
+        "name": "Natu",
+        "retreat_cost": 1,
+        "weakness": {
+            "element": "psychic",
+            "lambda": "x2"
+        }
+    }
+}
